@@ -1,0 +1,1096 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0"/>
+  <title>AGS — Maatwerk Tool</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600;700&family=Oswald:wght@500;600;700&display=swap" rel="stylesheet"/>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { font-size: 16px; -webkit-text-size-adjust: 100%; }
+    body {
+      background: #F2F5FA;
+      color: #2D2D2D;
+      font-family: 'Open Sans', sans-serif;
+      font-size: 15px;
+      line-height: 1.55;
+      min-height: 100vh;
+      -webkit-font-smoothing: antialiased;
+    }
+    #root { min-height: 100vh; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+<script type="text/babel">
+const { useState, useRef, useCallback } = React;
+
+// ── BRAND TOKENS ──────────────────────────────────────────────────────────────
+const C = {
+  red:     '#CC1020', redDk: '#A50D1A', redBg: '#FFF0F1',
+  blue:    '#003B82', blueMd: '#004FA8', blueBg: '#EEF3FB',
+  body:    '#2D2D2D', muted: '#6B7280',
+  light:   '#F2F5FA', white: '#FFFFFF',
+  border:  '#D1D9E6', border2: '#E8EDF5',
+  green:   '#1A6830', greenBg: '#EBF5EE',
+  warn:    '#7A4F00', warnBg: '#FFFAED',
+};
+
+// ── INLINE STYLES (mobile-first objects) ─────────────────────────────────────
+const S = {
+  // Layout
+  page:    { maxWidth: 480, margin: '0 auto', paddingBottom: 32 },
+  section: { padding: '0 16px' },
+
+  // Header
+  topbar:  { background: C.blue, color: 'rgba(255,255,255,0.75)', fontSize: 12, padding: '6px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 4 },
+  header:  { background: C.white, borderBottom: `3px solid ${C.red}`, padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', position: 'sticky', top: 0, zIndex: 100, boxShadow: '0 2px 8px rgba(0,59,130,0.10)' },
+  logoName: { fontFamily: "'Oswald', sans-serif", fontWeight: 700, fontSize: 20, color: C.blue, lineHeight: 1.1 },
+  logoSub:  { fontSize: 11, color: C.muted, marginTop: 1 },
+  badge:   { background: C.blue, color: '#fff', fontFamily: "'Oswald', sans-serif", fontSize: 11, fontWeight: 600, letterSpacing: '0.6px', textTransform: 'uppercase', padding: '5px 10px', borderRadius: 3 },
+
+  // Stepper
+  stepper: { background: C.blue, display: 'flex', overflowX: 'auto' },
+  stepTab: (active, done) => ({
+    display: 'flex', alignItems: 'center', gap: 8, padding: '12px 16px',
+    flex: 1, justifyContent: 'center',
+    background: active ? C.red : done ? 'rgba(255,255,255,0.08)' : 'transparent',
+    borderRight: '1px solid rgba(255,255,255,0.1)',
+    cursor: 'default', position: 'relative',
+  }),
+  stepNum: (active, done) => ({
+    width: 24, height: 24, borderRadius: '50%', flexShrink: 0,
+    background: done ? C.green : active ? 'rgba(0,0,0,0.2)' : 'rgba(255,255,255,0.15)',
+    color: '#fff', fontFamily: "'Oswald', sans-serif", fontSize: 12, fontWeight: 700,
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+  }),
+  stepLabel: (active, done) => ({
+    fontSize: 11, fontWeight: 700, fontFamily: "'Oswald', sans-serif",
+    color: (active || done) ? '#fff' : 'rgba(255,255,255,0.55)',
+    textTransform: 'uppercase', letterSpacing: '0.4px', whiteSpace: 'nowrap',
+  }),
+
+  // Card
+  card:    { background: C.white, border: `1px solid ${C.border}`, borderRadius: 6, overflow: 'hidden', boxShadow: '0 1px 4px rgba(0,59,130,0.07)', marginBottom: 16 },
+  cardHd:  { background: C.blue, color: '#fff', padding: '11px 16px', fontFamily: "'Oswald', sans-serif", fontSize: 14, fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
+  cardBd:  { padding: '16px' },
+  cardHdAcc: { color: '#7EC0FF', fontWeight: 500 },
+
+  // Tabs
+  tabs:    { display: 'flex', borderBottom: `2px solid ${C.border}`, marginBottom: 16 },
+  tab: (active) => ({
+    flex: 1, padding: '11px 8px', textAlign: 'center',
+    fontFamily: "'Oswald', sans-serif", fontSize: 13, fontWeight: 600,
+    textTransform: 'uppercase', letterSpacing: '0.3px', cursor: 'pointer',
+    color: active ? C.red : C.muted,
+    borderBottom: `3px solid ${active ? C.red : 'transparent'}`,
+    marginBottom: -2, transition: 'all 0.15s',
+  }),
+
+  // Upload
+  uploadZone: (over) => ({
+    border: `2px dashed ${over ? C.red : C.border}`,
+    borderRadius: 6, background: over ? C.redBg : C.light,
+    display: 'flex', flexDirection: 'column', alignItems: 'center',
+    justifyContent: 'center', padding: '36px 20px', textAlign: 'center',
+    cursor: 'pointer', transition: 'all 0.2s', minHeight: 180,
+  }),
+  uploadIcon: { width: 56, height: 56, background: C.blue, borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24, marginBottom: 12, boxShadow: '0 4px 14px rgba(0,59,130,0.25)' },
+  uploadTitle: { fontFamily: "'Oswald', sans-serif", fontSize: 17, fontWeight: 700, color: C.blue, marginBottom: 4 },
+  uploadSub:  { fontSize: 13, color: C.muted, lineHeight: 1.5 },
+
+  // Buttons — full-width on mobile
+  btnBase:  { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, width: '100%', padding: '14px 16px', borderRadius: 6, border: 'none', fontFamily: "'Open Sans', sans-serif", fontSize: 15, fontWeight: 700, cursor: 'pointer', transition: 'all 0.18s', textTransform: 'uppercase', letterSpacing: '0.2px' },
+  btnRed:   { background: C.red, color: '#fff' },
+  btnBlue:  { background: C.blue, color: '#fff' },
+  btnGreen: { background: C.green, color: '#fff' },
+  btnOl:    { background: 'transparent', color: C.blue, border: `2px solid ${C.border}` },
+  btnSm:    { padding: '9px 14px', fontSize: 13, width: 'auto' },
+  btnDis:   { background: '#D1D9E6', color: '#9CA3AF', cursor: 'not-allowed' },
+
+  // Alert
+  alert: (type) => {
+    const map = {
+      info:  { bg: C.blueBg, border: C.blue,   color: C.blue  },
+      ok:    { bg: C.greenBg,border: C.green,  color: C.green },
+      warn:  { bg: C.warnBg, border: '#C88000',color: C.warn  },
+      err:   { bg: C.redBg,  border: C.red,    color: C.redDk },
+    };
+    const t = map[type] || map.info;
+    return { display: 'flex', gap: 10, padding: '12px 14px', borderRadius: 6, fontSize: 13, marginBottom: 12, lineHeight: 1.5, borderLeft: `4px solid ${t.border}`, background: t.bg, color: t.color };
+  },
+
+  // Data row (for analyse results — replaces table on mobile)
+  dataRow:  { display: 'flex', alignItems: 'flex-start', padding: '11px 0', borderBottom: `1px solid ${C.border2}` },
+  dataLabel:{ fontSize: 12, fontWeight: 700, color: C.muted, textTransform: 'uppercase', letterSpacing: '0.4px', width: 110, flexShrink: 0, paddingTop: 1, fontFamily: "'Oswald', sans-serif" },
+  dataVal:  { fontSize: 14, color: C.body, flex: 1, fontWeight: 600 },
+  dataValBlue: { fontSize: 14, color: C.blue, flex: 1, fontWeight: 700 },
+  dataValRed:  { fontSize: 14, color: C.red,  flex: 1, fontWeight: 700 },
+  dataValGreen:{ fontSize: 14, color: C.green,flex: 1, fontWeight: 700 },
+
+  // Summary chips — 2-col grid
+  chipsGrid:{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 16 },
+  chip:     { background: C.white, border: `1px solid ${C.border}`, borderTop: `3px solid ${C.red}`, borderRadius: 6, padding: '10px 14px', boxShadow: '0 1px 4px rgba(0,59,130,0.07)' },
+  chipVal:  { fontFamily: "'Oswald', sans-serif", fontSize: 26, fontWeight: 700, color: C.blue, lineHeight: 1, display: 'block', marginBottom: 2 },
+  chipLbl:  { fontSize: 11, color: C.muted, textTransform: 'uppercase', letterSpacing: '0.5px', fontWeight: 600 },
+
+  // Confirm box
+  cbox:    { background: C.warnBg, border: `1px solid #FFDA80`, borderLeft: `4px solid ${C.red}`, borderRadius: 6, padding: '14px 16px', marginBottom: 12 },
+  cTitle:  { fontFamily: "'Oswald', sans-serif", fontSize: 14, fontWeight: 700, color: C.red, marginBottom: 8 },
+  cQ:      { fontSize: 14, color: C.body, marginBottom: 12, fontWeight: 600, lineHeight: 1.5 },
+  cOpts:   { display: 'flex', flexWrap: 'wrap', gap: 8 },
+  cOpt: (sel) => ({
+    padding: '9px 16px', borderRadius: 6, fontSize: 14, fontWeight: 600, cursor: 'pointer',
+    border: `2px solid ${sel ? C.red : C.border}`,
+    background: sel ? C.red : C.white,
+    color: sel ? '#fff' : C.body,
+    transition: 'all 0.15s',
+  }),
+  cOptGreen: (sel) => ({
+    padding: '9px 16px', borderRadius: 6, fontSize: 14, fontWeight: 600, cursor: 'pointer',
+    border: `2px solid ${sel ? C.green : C.border}`,
+    background: sel ? C.greenBg : C.white,
+    color: sel ? C.green : C.body,
+    transition: 'all 0.15s',
+  }),
+
+  // Form
+  formGroup: { marginBottom: 14 },
+  label:    { display: 'block', fontSize: 12, fontWeight: 700, color: C.blue, textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 5, fontFamily: "'Oswald', sans-serif" },
+  input:    { width: '100%', background: C.light, border: `1px solid ${C.border}`, borderRadius: 6, padding: '12px 14px', fontFamily: "'Open Sans', sans-serif", fontSize: 15, color: C.body, outline: 'none', transition: 'border-color 0.18s' },
+  select:   { width: '100%', background: C.light, border: `1px solid ${C.border}`, borderRadius: 6, padding: '12px 14px', fontFamily: "'Open Sans', sans-serif", fontSize: 15, color: C.body, outline: 'none', appearance: 'none', backgroundImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%23003B82' fill='none' stroke-width='2'/%3E%3C/svg%3E\")", backgroundRepeat: 'no-repeat', backgroundPosition: 'right 14px center' },
+  textarea: { width: '100%', background: C.light, border: `1px solid ${C.border}`, borderRadius: 6, padding: '12px 14px', fontFamily: "'Open Sans', sans-serif", fontSize: 15, color: C.body, outline: 'none', resize: 'vertical', lineHeight: 1.5 },
+
+  // Order list item (card-style on mobile)
+  orderItem: { background: C.white, border: `1px solid ${C.border}`, borderRadius: 6, padding: '14px 16px', marginBottom: 10 },
+  orderNum:  { background: C.blue, color: '#fff', fontFamily: "'Oswald', sans-serif", fontWeight: 700, fontSize: 13, width: 28, height: 28, borderRadius: '50%', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', marginRight: 10 },
+  orderType: { fontFamily: "'Oswald', sans-serif", fontWeight: 700, fontSize: 16, color: C.blue },
+  orderMat:  { fontSize: 13, color: C.muted, marginTop: 2 },
+  orderMeta: { display: 'flex', gap: 12, marginTop: 8, flexWrap: 'wrap' },
+  orderMetaItem: { fontSize: 13, color: C.body },
+
+  // Footer
+  footer:   { background: C.blue, color: 'rgba(255,255,255,0.7)', padding: '20px 16px', marginTop: 32, fontSize: 13 },
+  redBar:   { background: C.red, height: 5 },
+
+  // Toast
+  toast: { position: 'fixed', bottom: 24, left: 16, right: 16, background: C.blue, borderLeft: `4px solid ${C.red}`, borderRadius: 6, color: '#fff', padding: '14px 16px', fontSize: 14, fontWeight: 600, boxShadow: '0 6px 24px rgba(0,59,130,0.25)', zIndex: 999, display: 'flex', alignItems: 'center', gap: 10 },
+
+  // Quality warn
+  qualWarn: { background: C.warnBg, border: `1px solid #FFD080`, borderLeft: `4px solid ${C.red}`, borderRadius: 6, padding: '12px 14px', marginBottom: 12 },
+};
+
+// ── AGS KENNISBANK ────────────────────────────────────────────────────────────
+const MAT_MAP = {
+  // ── Lood ──────────────────────────────────────────────────────────────────
+  "code 3":    { cat:"Bladlood Code 3 (1.25mm)",  dikte:1.25, type:"lood" },
+  "code 4":    { cat:"Bladlood Code 4 (1.80mm)",  dikte:1.80, type:"lood" },
+  "code 5":    { cat:"Bladlood Code 5 (2.24mm)",  dikte:2.24, type:"lood" },
+  "code 6":    { cat:"Bladlood Code 6 (2.65mm)",  dikte:2.65, type:"lood" },
+  "code 7":    { cat:"Bladlood Code 7 (3.15mm)",  dikte:3.15, type:"lood" },
+  "code 8":    { cat:"Bladlood Code 8 (3.55mm)",  dikte:3.55, type:"lood" },
+  "code 18":   { cat:"Bladlood Code 18 (2.00mm)", dikte:2.00, type:"lood" },
+  "lood":      { cat:"Bladlood (dikte onbekend — bevestiging vereist)", dikte:null, type:"lood" },
+  // ── Zink / Titaanzink ─────────────────────────────────────────────────────
+  "zink 0.5":  { cat:"Titaanzink 0.5mm", dikte:0.5, type:"zink" },
+  "zink 0.6":  { cat:"Titaanzink 0.6mm", dikte:0.6, type:"zink" },
+  "zink 0.7":  { cat:"Titaanzink 0.7mm", dikte:0.7, type:"zink" },
+  "zink 0.8":  { cat:"Titaanzink 0.8mm", dikte:0.8, type:"zink" },
+  "zink 1.0":  { cat:"Titaanzink 1.0mm", dikte:1.0, type:"zink" },
+  "titaanzink":{ cat:"Titaanzink (dikte onbekend — bevestiging vereist)", dikte:null, type:"zink" },
+  "zink":      { cat:"Titaanzink (dikte onbekend — bevestiging vereist)", dikte:null, type:"zink" },
+  // ── Koper ─────────────────────────────────────────────────────────────────
+  "koper 0.5": { cat:"Koper 0.5mm",         dikte:0.5,  type:"koper" },
+  "koper 0.6": { cat:"Koper 0.6mm",         dikte:0.6,  type:"koper" },
+  "koper 0.7": { cat:"Koper 0.7mm",         dikte:0.7,  type:"koper" },
+  "koper kops":{ cat:"Koper Kops (profiel)", dikte:null, type:"koper" },
+  "koper":     { cat:"Koper (dikte onbekend — bevestiging vereist)", dikte:null, type:"koper" },
+  // ── Aluminium ─────────────────────────────────────────────────────────────
+  "alu 1.0":    { cat:"Aluminium 1.0mm", dikte:1.0, type:"alu" },
+  "alu 1.5":    { cat:"Aluminium 1.5mm", dikte:1.5, type:"alu" },
+  "alu 2.0":    { cat:"Aluminium 2.0mm", dikte:2.0, type:"alu" },
+  "aluminium":  { cat:"Aluminium (dikte onbekend — bevestiging vereist)", dikte:null, type:"alu" },
+  // ── RVS ───────────────────────────────────────────────────────────────────
+  "rvs 304":   { cat:"RVS 304", dikte:null, type:"rvs" },
+  "rvs 316":   { cat:"RVS 316", dikte:null, type:"rvs" },
+  "rvs":       { cat:"RVS (kwaliteit onbekend)", dikte:null, type:"rvs" },
+  // ── Kunststof ─────────────────────────────────────────────────────────────
+  "pvc":       { cat:"PVC",     dikte:null, type:"pvc" },
+  "pp":        { cat:"PP (Polypropyleen)", dikte:null, type:"pp" },
+  "pe-epdm":   { cat:"PE-EPDM", dikte:null, type:"pe" },
+  "pe":        { cat:"PE (Polyethyleen)", dikte:null, type:"pe" },
+};
+const VAKTERMEN = {
+  // ── Bewerkingen ───────────────────────────────────────────────────────────
+  "varkensoor":   { label:"Varkensoor",     flag:"⚒️ Handmatige nabewerking vereist",            sev:"warn" },
+  "waterval":     { label:"Waterval",       flag:"✓ Standaard bewerking AGS",                   sev:"info" },
+  "kraagstuk":    { label:"Kraagstuk",      flag:"✓ AGS product: Loden Doorvoer Ontluchtingen", sev:"info" },
+  "diepen":       { label:"Diepen",         flag:"✓ Standaard AGS bewerking",                   sev:"info" },
+  "zetten":       { label:"Zetten",         flag:"✓ Standaard AGS bewerking",                   sev:"info" },
+  "kraalrand":    { label:"Kraalrand",      flag:"✓ Standaard AGS afwerking",                   sev:"info" },
+  "solderen":     { label:"Solderen",       flag:"⚒️ Solderen — controleer materiaalkeuze",     sev:"warn" },
+  "windveer":     { label:"Windveer",       flag:"✓ Standaard bewerking AGS",                   sev:"info" },
+  // ── Producttypes ──────────────────────────────────────────────────────────
+  "kiezelbak":    { label:"Kiezelbak",      flag:"✓ Zie AGS Kiezelbakken assortiment",          sev:"info" },
+  "vergaarbak":   { label:"Vergaarbak",     flag:"✓ AGS product: Zinken/PVC Vergaarbakken",     sev:"info" },
+  "onderuitloop": { label:"Onderuitloop",   flag:"✓ Zie AGS Onderuitlopen assortiment",         sev:"info" },
+  "stadsuitloop": { label:"Stadsuitloop",   flag:"✓ AGS: Zinken/Loden/ALU/PVC Stadsuitlopen",  sev:"info" },
+  "spuwer":       { label:"Spuwer",         flag:"✓ AGS product: zie Noodoverstorten",          sev:"info" },
+  "noodoverloop": { label:"Noodoverloop",   flag:"✓ AGS product: zie Noodoverstorten",          sev:"info" },
+  "ontluchting":  { label:"Ontluchting",    flag:"✓ AGS product: zie Ontluchtingen",            sev:"info" },
+  "balkondoorvoer":{ label:"Balkondoorvoer",flag:"✓ AGS product: Loden Balkondoorvoeren",       sev:"info" },
+  "daktap":       { label:"AGS DakTap",     flag:"✓ AGS product: DakTap Stadsuitloop",          sev:"info" },
+  // ── Bijzonderheden ────────────────────────────────────────────────────────
+  "daktrim":      { label:"Daktrim",        flag:"⚠️ Controleer lengte — max 3000mm standaard", sev:"warn" },
+  "loodslabben":  { label:"Loodslabben",    flag:"✓ AGS product: Loodslabpannen",               sev:"info" },
+  "geprimerd":    { label:"Geprimerd",      flag:"✓ AGS product: Loden Geprimerde Afvoeren",    sev:"info" },
+  "eco":          { label:"ECO",            flag:"✓ AGS product: Loden ECO Afvoeren",           sev:"info" },
+  "trilago":      { label:"Trilago",        flag:"✓ AGS product: Trilago HWA Afvoeren",         sev:"info" },
+  "jual":         { label:"JUAL",           flag:"✓ AGS product: JUAL Afvoeren",                sev:"info" },
+  "vbd":          { label:"VBD",            flag:"✓ AGS product: Loden VBD Afvoeren",           sev:"info" },
+};
+const DIKTES = {
+  lood:  ["Code 3 (1.25mm)","Code 4 (1.80mm)","Code 5 (2.24mm)","Code 6 (2.65mm)","Code 7 (3.15mm)","Code 8 (3.55mm)","Code 18 (2.00mm)"],
+  zink:  ["0.5mm","0.6mm","0.7mm","0.8mm","1.0mm"],
+  koper: ["0.5mm","0.6mm","0.7mm","Koper Kops"],
+  alu:   ["1.0mm","1.5mm","2.0mm"],
+  rvs:   ["RVS 304","RVS 316"],
+  pvc:   ["PVC Standaard"],
+  pp:    ["PP Standaard"],
+  pe:    ["PE-EPDM","PE Standaard"],
+};
+const MATERIALEN = [
+  // Lood
+  "Bladlood Code 3 (1.25mm)","Bladlood Code 4 (1.80mm)","Bladlood Code 5 (2.24mm)",
+  "Bladlood Code 6 (2.65mm)","Bladlood Code 7 (3.15mm)","Bladlood Code 8 (3.55mm)",
+  "Bladlood Code 18 (2.00mm)",
+  // Zink
+  "Titaanzink 0.5mm","Titaanzink 0.6mm","Titaanzink 0.7mm","Titaanzink 0.8mm","Titaanzink 1.0mm",
+  // Koper
+  "Koper 0.5mm","Koper 0.6mm","Koper 0.7mm","Koper Kops (profiel)",
+  // Aluminium
+  "Aluminium 1.0mm","Aluminium 1.5mm","Aluminium 2.0mm",
+  // RVS
+  "RVS 304","RVS 316",
+  // Kunststof
+  "PVC","PP (Polypropyleen)","PE-EPDM","PE (Polyethyleen)",
+];
+const PRODUCTTYPES = [
+  // Afvoeren
+  "onderuitloop","kiezelbak","kiezelbak rond","stadsuitloop","vergaarbak","balkondoorvoer",
+  "dd-afvoer","patent-uitloop","eco afvoer","geprimerde afvoer",
+  // Overstorten
+  "spuwer","combi-uitloop","noodoverloop",
+  // Ontluchtingen
+  "ontluchting","rioolontluchting","rookgas doorvoer",
+  // Overig maatwerk
+  "daktrim","slabben","kraagstuk","windveer","anders",
+];
+const BEWOPTIES = [
+  "Zetten","Kraalrand","Solderen","Knippen","Diepen","Lassen","Vouwen",
+  "Varkensoor","Waterval","Geprimerd","Gestraald","Inritsen",
+];
+
+function enrichResult(raw) {
+  const r = {...raw}; const confirms = [];
+  const ml = (raw.materiaaltype||"").toLowerCase();
+  let mat = null;
+  for (const [k,v] of Object.entries(MAT_MAP)) { if (ml.includes(k)){mat=v;break;} }
+  if (mat) {
+    r.ags_cat = mat.cat; r.dikte = mat.dikte; r.mat_type = mat.type;
+    // Only ask for dikte confirmation if it's null AND type has options
+    if (!mat.dikte && DIKTES[mat.type]) {
+      confirms.push({type:"dikte", opts:(DIKTES[mat.type]).map(o=>({l:o,v:o}))});
+    }
+  } else {
+    r.ags_cat = "Onbekend — selecteer handmatig"; r.dikte = null;
+    confirms.push({type:"dikte", opts:DIKTES.lood.map(o=>({l:o,v:o}))});
+  }
+  // Map ags_product from AI response if present
+  if (raw.ags_product) r.ags_product = raw.ags_product;
+  const txt = [raw.beschrijving||"",raw.opmerkingen||"",...(raw.bewerkingen||[])].join(" ");
+  const zRe = /\b(\d{2,4})-(\d{1,3})-(\d{1,3})\b/g; const zetmaten=[]; let m;
+  while((m=zRe.exec(txt))!==null) zetmaten.push({raw:m[0], leg:`B ${m[1]}mm — Z1: ${m[2]}mm — Z2: ${m[3]}mm`});
+  r.zetmaten = zetmaten;
+  const vtags = [];
+  for(const[k,v]of Object.entries(VAKTERMEN)) if(txt.toLowerCase().includes(k)&&!vtags.find(x=>x.label===v.label)) vtags.push(v);
+  r.vtags = vtags;
+  if (r.lengte_mm && r.lengte_mm > 3000) {
+    r.delen = Math.ceil(r.lengte_mm/3000); r.deel_mm = Math.round(r.lengte_mm/r.delen);
+    confirms.push({type:"confirm", id:"delen", field:"leveringInDelen",
+      msg:`Lengte ${r.lengte_mm}mm overschrijdt max 3000mm. Levering in ${r.delen} delen á ${r.deel_mm}mm met koppelstuk?`});
+  }
+  if (vtags.some(v=>v.sev==="warn"))
+    confirms.push({type:"confirm", id:"nabewerking", field:"nabewerkingOk",
+      msg:`Handmatige nabewerking vereist: ${vtags.filter(v=>v.sev==="warn").map(v=>v.label).join(", ")}. Akkoord?`});
+  r._confirms = confirms;
+  return r;
+}
+
+
+function readFileAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error("Kon bestand niet lezen"));
+    reader.onload  = e  => resolve(e.target.result);
+    reader.readAsDataURL(file);
+  });
+}
+
+function resizeDataUrl(dataUrl) {
+  return new Promise(resolve => {
+    const img = new Image();
+    img.onerror = () => resolve(dataUrl); // fallback: original
+    img.onload  = () => {
+      try {
+        const MAX = 1200;
+        let w = img.naturalWidth  || img.width  || 0;
+        let h = img.naturalHeight || img.height || 0;
+        if (!w || !h) { resolve(dataUrl); return; }
+        if (w > MAX || h > MAX) {
+          const ratio = Math.min(MAX / w, MAX / h);
+          w = Math.round(w * ratio);
+          h = Math.round(h * ratio);
+        }
+        const canvas = document.createElement("canvas");
+        canvas.width = w; canvas.height = h;
+        const ctx = canvas.getContext("2d");
+        ctx.fillStyle = "#fff";
+        ctx.fillRect(0, 0, w, h);
+        ctx.drawImage(img, 0, 0, w, h);
+        resolve(canvas.toDataURL("image/jpeg", 0.88));
+      } catch(e) {
+        resolve(dataUrl); // canvas blocked — use original
+      }
+    };
+    img.src = dataUrl;
+  });
+}
+
+function getMediaType(dataUrl) {
+  const m = dataUrl&&dataUrl.match(/^data:([a-zA-Z0-9+/.-]+);base64,/);
+  const t = m?m[1].toLowerCase():"image/jpeg";
+  return ["image/jpeg","image/png","image/gif","image/webp"].includes(t)?t:"image/jpeg";
+}
+
+async function checkQuality(dataUrl) {
+  return new Promise(resolve => {
+    try {
+      const img = new Image();
+      img.onload = () => {
+        try {
+          const c = document.createElement("canvas");
+          const sc = Math.min(150/img.width, 150/img.height, 1);
+          c.width = Math.round(img.width*sc); c.height = Math.round(img.height*sc);
+          const ctx = c.getContext("2d"); ctx.drawImage(img,0,0,c.width,c.height);
+          const d = ctx.getImageData(0,0,c.width,c.height).data;
+          let bright=0, dark=0, tot=d.length/4;
+          for(let i=0;i<d.length;i+=4){const l=0.299*d[i]+0.587*d[i+1]+0.114*d[i+2];if(l>220)bright++;if(l<30)dark++;}
+          const issues=[];
+          if(bright/tot>0.6) issues.push("Foto lijkt overbelicht");
+          if(dark/tot>0.5)   issues.push("Foto is te donker");
+          if(img.width<300||img.height<300) issues.push("Foto is erg klein — maak een scherpere foto");
+          resolve(issues);
+        } catch(e) { resolve([]); } // canvas blocked — skip silently
+      };
+      img.onerror = () => resolve([]);
+      img.src = dataUrl;
+    } catch(e) { resolve([]); }
+  });
+}
+
+async function callClaude(b64, mt) {
+  const prompt = `Je bent een expert vakspecialist bij AGS Products B.V. in Dordrecht, specialist in lood-, zink-, koper- en aluminiumwerk voor de dakdekkerij.
+
+AGS PRODUCTASSORTIMENT (gebruik deze exacte benamingen):
+AFVOEREN: Loden Onderuitlopen, Loden Kiezelbakken, Loden Kiezelbakken Rond, Loden Geprimerde Onderuitlopen/Kiezelbakken, Loden ECO Onderuitlopen/Kiezelbakken, Loden VBD Onderuitlopen/Kiezelbakken 90°/45°, Loden DD Afvoeren, Loden Patent-Uitlopen, Loden Stadsuitlopen, Loden Balkondoorvoeren, Zinken Stadsuitlopen, Zinken Vergaarbakken, ALU Onderuitlopen/Kiezelbakken, ALU-PVC Onderuitlopen/Kiezelbakken, ALU Gestraalde Afvoeren, ALU Stadsuitlopen, AGS DakTap, Trilago Onderuitlopen/Kiezelbakken, JUAL Onderuitlopen/Kiezelbakken, RVS Onderuitlopen/Kiezelbakken, PVC Onderuitlopen/Kiezelbakken/Stadsuitlopen/Vergaarbakken, PP Onderuitlopen/Kiezelbakken/Kiezelbakken Rond, PE-EPDM Onderuitlopen/Kiezelbakken/Kiezelbakken Rond
+NOODOVERSTORTEN: Loden Spuwers, Lood-Zink Spuwers, Lood-Koper Spuwers, Loden Combi-Uitlopen, Loden Noodoverlopen, ALU/ALU-PVC/RVS/PVC/PP/PE Spuwers en Noodoverlopen
+ONTLUCHTINGEN: Loden Doorvoer Ontluchtingen, Loden Rioolontluchtingen, Loden ECO Rioolontluchtingen, Zinken Ontluchtingen, ALU/ALU-PVC/PVC/PP/PE Dubbelwandige en Enkelwandige Ontluchtingen, ALU Rookgas Doorvoer Ontluchtingen, PP Dakventilatoren, RVS Stormkragen, Regenkappen
+
+MATERIAALCODES: Lood Code 3(1.25mm)/4(1.80mm)/5(2.24mm)/6(2.65mm)/7(3.15mm)/8(3.55mm)/18(2.00mm), Titaanzink 0.5/0.6/0.7/0.8/1.0mm, Koper 0.5/0.6/0.7mm/Kops, Aluminium 1.0/1.5/2.0mm, RVS 304/316, PVC/PP/PE-EPDM/PE
+VAKTERMEN: varkensoor=handmatige nabewerking, zetmaat 150-20-30=breedte-zetting1-zetting2mm, kraalrand/waterval/diepen/zetten/solderen/knippen/lassen/vouwen/inritsen/gestraald/geprimerd
+REGELS: getallen zonder eenheid zijn mm, lengte>3000mm=levering in delen
+
+Retourneer UITSLUITEND dit JSON zonder uitleg of markdown:
+{"materiaaltype":"exacte tekst schets","ags_product":"officiële AGS productnaam","lengte_mm":number_or_null,"breedte_mm":number_or_null,"diepte_mm":number_or_null,"hoek_graden":number_or_null,"aantal":number,"bewerkingen":["string"],"producttype":"onderuitloop/kiezelbak/vergaarbak/spuwer/noodoverloop/ontluchting/stadsuitloop/daktrim/slabben/anders","beschrijving":"technische omschrijving max 1 zin","opmerkingen":"bijzonderheden of leeg","betrouwbaarheid":{"materiaal":"hoog/middel/laag","afmetingen":"hoog/middel/laag","bewerkingen":"hoog/middel/laag"}}`;
+
+  const res = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      model: "claude-sonnet-4-20250514",
+      max_tokens: 1200,
+      messages: [{ role: "user", content: [
+        { type: "image", source: { type: "base64", media_type: mt || "image/jpeg", data: b64 } },
+        { type: "text", text: prompt }
+      ]}]
+    })
+  });
+
+  if (!res.ok) {
+    let msg = `HTTP fout ${res.status}`;
+    try { const e = await res.json(); msg = e?.error?.message || msg; } catch(_) {}
+    throw new Error(msg);
+  }
+  const data = await res.json();
+  if (data.error) throw new Error(data.error.message || "API fout");
+  if (!data.content?.length) throw new Error("Leeg antwoord van AI");
+  const raw = data.content.map(b => b.text || "").join("");
+  try {
+    return JSON.parse(raw.replace(/```json|```/g, "").trim());
+  } catch(_) {
+    throw new Error("AI antwoord kon niet worden verwerkt. Probeer opnieuw.");
+  }
+}
+
+function exportCSV(orders, project) {
+  const lines = ["Nr,Producttype,AGS Product,AGS Categorie,Lengte mm,Breedte mm,Diepte mm,Aantal,Bewerkingen,Opmerking",
+    ...orders.map((o,i)=>[i+1,o.r.producttype||"maatwerk",o.r.ags_product||"",
+      o.ans?.dikte||o.r.ags_cat,
+      o.r.lengte_mm??"",o.r.breedte_mm??"",o.r.diepte_mm??"",o.r.aantal,
+      (o.r.bewerkingen||[]).join("|"),`"${(o.note||"").replace(/"/g,'""')}"`].join(","))
+  ];
+  if(project) lines.unshift(`Project: ${project}`);
+  const a=Object.assign(document.createElement("a"),{href:URL.createObjectURL(new Blob([lines.join("\n")],{type:"text/csv"})),download:"AGS_offerte.csv"});
+  a.click();
+}
+
+function exportPDF(orders, project, algNote) {
+  const datum=new Date().toLocaleDateString("nl-NL",{day:"2-digit",month:"long",year:"numeric"});
+  const rows=orders.map((o,i)=>`<tr>
+    <td style="font-weight:700;color:#003B82;text-align:center">${i+1}</td>
+    <td style="font-weight:700;color:#003B82">${o.r.producttype||"Maatwerk"}</td>
+    <td style="font-size:11px;color:#003B82">${o.r.ags_product||"—"}</td>
+    <td style="font-weight:700">${o.ans?.dikte||o.r.ags_cat}</td>
+    <td>${o.r.lengte_mm??"—"}${o.r.lengte_mm?" mm":""}</td>
+    <td>${o.r.breedte_mm??"—"}${o.r.breedte_mm?" mm":""}</td>
+    <td style="font-weight:700;color:#CC1020;text-align:center">${o.r.aantal}</td>
+    <td style="font-size:11px">${(o.r.bewerkingen||[]).join(", ")||"—"}</td>
+    <td style="font-size:11px;font-style:italic;color:#555">${o.note||""}</td>
+  </tr>`).join("");
+  const html=`<!DOCTYPE html><html lang="nl"><head><meta charset="utf-8"><style>
+body{font-family:Arial,sans-serif;margin:0;color:#333}
+.hdr{background:#fff;padding:16px 28px;display:flex;align-items:center;gap:16px;border-bottom:3px solid #CC1020}
+.lb{width:52px;height:40px;display:flex;align-items:center;justify-content:center}
+.r{background:#CC1020}.b{background:#003B82}
+.lb span{font-family:Arial Black,sans-serif;font-size:26px;font-weight:900;color:#fff}
+h1{font-size:16px;color:#003B82;margin-bottom:2px}
+.meta{font-size:11px;color:#888}
+.bar{background:#CC1020;height:4px}
+.body{padding:24px}
+h2{font-size:16px;color:#003B82;border-left:4px solid #CC1020;padding-left:10px;margin-bottom:4px}
+.sub{font-size:11px;color:#888;margin-bottom:18px;padding-left:14px}
+.proj{background:#EEF3FB;border-left:3px solid #003B82;padding:8px 12px;font-size:13px;font-weight:700;color:#003B82;margin-bottom:14px;border-radius:3px}
+table{width:100%;border-collapse:collapse;font-size:12px}
+thead tr{background:#003B82}th{color:rgba(255,255,255,.85);text-align:left;padding:8px 10px;font-size:10px;text-transform:uppercase;letter-spacing:.5px}
+td{padding:8px 10px;border-bottom:1px solid #E0E0E0;vertical-align:top}
+tr:nth-child(even) td{background:#F5F8FC}
+.opm{background:#FFFAED;border-left:3px solid #CC1020;padding:10px 12px;font-size:12px;font-style:italic;margin-top:18px;border-radius:3px}
+.ft{margin-top:20px;padding-top:10px;border-top:2px solid #003B82;font-size:10px;color:#999;display:flex;justify-content:space-between}
+</style></head><body>
+<div class="hdr"><div style="display:flex"><div class="lb r"><span>A</span></div><div class="lb b"><span>G</span></div><div class="lb r"><span>S</span></div></div>
+<div><h1>Products B.V. — Offerte Aanvraag Maatwerk</h1><p class="meta">Daltonstraat 54, 3316GD Dordrecht · T 078-6176833 · www.ags.nl</p></div></div>
+<div class="bar"></div><div class="body">
+<h2>Maatwerk Offerte Aanvraag</h2><p class="sub">Aangemaakt: ${datum} · AGS Maatwerk-naar-Order Tool</p>
+${project?`<div class="proj">Project: ${project}</div>`:""}
+<table><thead><tr><th>#</th><th>Producttype</th><th>AGS Product</th><th>AGS Categorie</th><th>L mm</th><th>B mm</th><th>Aantal</th><th>Bewerkingen</th><th>Opmerking</th></tr></thead>
+<tbody>${rows}</tbody></table>
+${algNote?`<div class="opm"><strong>Algemene opmerking:</strong> ${algNote}</div>`:""}
+<div class="ft"><span>AGS Products B.V. · www.ags.nl · info@ags.nl</span><span>Onder voorbehoud van definitieve werktekening</span></div>
+</div></body></html>`;
+  window.open(URL.createObjectURL(new Blob([html],{type:"text/html"})),"_blank");
+}
+
+// ── UI COMPONENTS ─────────────────────────────────────────────────────────────
+function Btn({style={}, variant="red", sm=false, disabled=false, onClick, children}) {
+  const base = {...S.btnBase};
+  if (sm) Object.assign(base, S.btnSm);
+  const varMap = {red:S.btnRed, blue:S.btnBlue, green:S.btnGreen, ol:S.btnOl};
+  const col = disabled ? S.btnDis : (varMap[variant]||S.btnRed);
+  return <button style={{...base,...col,...style}} onClick={disabled?undefined:onClick} disabled={disabled}>{children}</button>;
+}
+
+function Alert({type="info", children}) {
+  return <div style={S.alert(type)}>{children}</div>;
+}
+
+function Card({title, accent, action, children, style={}}) {
+  return (
+    <div style={{...S.card,...style}}>
+      {title && (
+        <div style={S.cardHd}>
+          <span>{title} {accent&&<span style={S.cardHdAcc}>{accent}</span>}</span>
+          {action}
+        </div>
+      )}
+      <div style={S.cardBd}>{children}</div>
+    </div>
+  );
+}
+
+function DataRow({label, value, color, note}) {
+  const valStyle = color==="blue"?S.dataValBlue : color==="red"?S.dataValRed : color==="green"?S.dataValGreen : S.dataVal;
+  return (
+    <div style={S.dataRow}>
+      <span style={S.dataLabel}>{label}</span>
+      <div style={{flex:1}}>
+        <span style={valStyle}>{value}</span>
+        {note && <div style={{fontSize:12,color:C.muted,marginTop:2}}>{note}</div>}
+      </div>
+    </div>
+  );
+}
+
+function ResultCard({result}) {
+  return (
+    <div style={{padding:'0 0 4px'}}>
+      <DataRow label="Producttype" value={result.producttype||"Maatwerk"} color="blue"/>
+      {result.ags_product && <DataRow label="AGS Product" value={result.ags_product} color="blue"/>}
+      <DataRow label="AGS Categorie" value={result.ags_cat} color="blue"/>
+      <DataRow label="Materiaal" value={result.materiaaltype} note={result.betrouwbaarheid?.materiaal ? `Betrouwbaarheid: ${result.betrouwbaarheid.materiaal}` : null}/>
+      <DataRow label="Lengte" value={result.lengte_mm!=null?`${result.lengte_mm} mm`:"—"} color={result.lengte_mm>3000?"red":null}
+        note={result.lengte_mm>3000?`⚠️ Levering in ${result.delen} delen á ${result.deel_mm}mm`:null}/>
+      <DataRow label="Breedte" value={result.breedte_mm!=null?`${result.breedte_mm} mm`:"—"}/>
+      <DataRow label="Diepte"  value={result.diepte_mm!=null?`${result.diepte_mm} mm`:"—"}/>
+      <DataRow label="Hoek"    value={result.hoek_graden!=null?`${result.hoek_graden}°`:"—"}/>
+      {result.zetmaten?.length>0 && <DataRow label="Zetmaat" value={result.zetmaten.map(z=>z.raw).join(", ")} color="green" note={result.zetmaten.map(z=>z.leg).join(" · ")}/>}
+      <DataRow label="Aantal" value={result.aantal} color="blue"/>
+      <DataRow label="Bewerkingen" value={(result.bewerkingen||[]).join(", ")||"—"}/>
+      {result.vtags?.length>0 && (
+        <div style={{...S.dataRow, flexDirection:'column', gap:6}}>
+          <span style={S.dataLabel}>Vaktermen</span>
+          <div style={{display:'flex',flexWrap:'wrap',gap:6}}>
+            {result.vtags.map((v,i)=>(
+              <span key={i} style={{fontSize:12,fontWeight:700,padding:'3px 8px',borderRadius:3,background:v.sev==="warn"?C.redBg:C.blueBg,color:v.sev==="warn"?C.red:C.blue}}>
+                {v.label}: {v.flag}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+      {result.opmerkingen && <DataRow label="Omschrijving" value={result.opmerkingen}/>}
+    </div>
+  );
+}
+
+function ConfirmSection({confirms, answers, onAnswer}) {
+  if(!confirms?.length) return null;
+  return (
+    <div>
+      {confirms.map((c,i) => {
+        if(c.type==="dikte") return (
+          <div key={i} style={S.cbox}>
+            <div style={S.cTitle}>❓ Bevestig materiaaldikte</div>
+            <div style={S.cQ}>Welke dikte heeft dit materiaal?</div>
+            <div style={S.cOpts}>
+              {c.opts.map(o=>(
+                <button key={o.v} style={S.cOpt(answers.dikte===o.v)} onClick={()=>onAnswer("dikte",o.v)}>{o.l}</button>
+              ))}
+            </div>
+          </div>
+        );
+        if(c.type==="confirm") return (
+          <div key={i} style={S.cbox}>
+            <div style={S.cTitle}>⚠️ Bevestiging vereist</div>
+            <div style={S.cQ}>{c.msg}</div>
+            {c.field && (
+              <div style={S.cOpts}>
+                <button style={S.cOpt(answers[c.field]===true)}  onClick={()=>onAnswer(c.field,true)}>✓ Ja, akkoord</button>
+                <button style={S.cOptGreen(answers[c.field]===false)} onClick={()=>onAnswer(c.field,false)}>✗ Nee, aanpassen</button>
+              </div>
+            )}
+          </div>
+        );
+        return null;
+      })}
+    </div>
+  );
+}
+
+function ManualForm({onSubmit}) {
+  const [form,setForm] = useState({materiaaltype:"",producttype:"anders",lengte_mm:"",breedte_mm:"",diepte_mm:"",hoek_graden:"",aantal:1,beschrijving:""});
+  const [bew,setBew] = useState([]);
+  const upd = (k,v) => setForm(p=>({...p,[k]:v}));
+  const togBew = b => setBew(p=>p.includes(b)?p.filter(x=>x!==b):[...p,b]);
+  const submit = () => {
+    if(!form.materiaaltype){alert("Selecteer een materiaal.");return;}
+    const raw={...form,lengte_mm:form.lengte_mm?+form.lengte_mm:null,breedte_mm:form.breedte_mm?+form.breedte_mm:null,
+      diepte_mm:form.diepte_mm?+form.diepte_mm:null,hoek_graden:form.hoek_graden?+form.hoek_graden:null,
+      aantal:+form.aantal||1,bewerkingen:bew,opmerkingen:"",
+      betrouwbaarheid:{materiaal:"hoog",afmetingen:form.lengte_mm?"hoog":"laag",bewerkingen:"hoog"}};
+    onSubmit(enrichResult(raw));
+  };
+  return (
+    <div>
+      <div style={S.formGroup}>
+        <label style={S.label}>Materiaaltype *</label>
+        <select style={S.select} value={form.materiaaltype} onChange={e=>upd("materiaaltype",e.target.value)}>
+          <option value="">— Selecteer materiaal —</option>
+          {MATERIALEN.map(m=><option key={m} value={m}>{m}</option>)}
+        </select>
+      </div>
+      <div style={S.formGroup}>
+        <label style={S.label}>Producttype</label>
+        <select style={S.select} value={form.producttype} onChange={e=>upd("producttype",e.target.value)}>
+          {PRODUCTTYPES.map(p=><option key={p} value={p}>{p.charAt(0).toUpperCase()+p.slice(1)}</option>)}
+        </select>
+      </div>
+      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12,marginBottom:14}}>
+        {[["Lengte (mm)","lengte_mm","bijv. 1200"],["Breedte (mm)","breedte_mm","bijv. 300"],["Diepte (mm)","diepte_mm","bijv. 80"],["Hoek (°)","hoek_graden","bijv. 90"]].map(([l,k,p])=>(
+          <div key={k}>
+            <label style={S.label}>{l}</label>
+            <input style={S.input} type="number" placeholder={p} value={form[k]} onChange={e=>upd(k,e.target.value)}/>
+          </div>
+        ))}
+      </div>
+      <div style={S.formGroup}>
+        <label style={S.label}>Aantal stuks</label>
+        <input style={S.input} type="number" min="1" value={form.aantal} onChange={e=>upd("aantal",e.target.value)}/>
+      </div>
+      <div style={S.formGroup}>
+        <label style={S.label}>Beschrijving (optioneel)</label>
+        <input style={S.input} type="text" placeholder="Korte technische omschrijving..." value={form.beschrijving} onChange={e=>upd("beschrijving",e.target.value)}/>
+      </div>
+      <div style={S.formGroup}>
+        <label style={S.label}>Bewerkingen</label>
+        <div style={{display:'flex',flexWrap:'wrap',gap:8,marginTop:4}}>
+          {BEWOPTIES.map(b=>(
+            <button key={b} type="button" style={{...S.cOpt(bew.includes(b)),padding:'9px 14px',fontSize:14}} onClick={()=>togBew(b)}>{b}</button>
+          ))}
+        </div>
+      </div>
+      <Btn variant="red" onClick={submit} style={{marginTop:4}}>✓ Toevoegen aan orderlijst</Btn>
+    </div>
+  );
+}
+
+// ── MAIN APP ──────────────────────────────────────────────────────────────────
+function AGSTool() {
+  const [step, setStep]       = useState(0);   // 0=upload, 1=validate, 2=orders
+  const [tab, setTab]         = useState("foto");
+  const [file, setFile]       = useState(null);
+  const [preview, setPrev]    = useState(null);
+  const [b64, setB64]         = useState(null);
+  const [mt, setMt]           = useState("image/jpeg");
+  const [drag, setDrag]       = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [qualIss, setQualIss] = useState([]);
+  const [apiErr, setApiErr]   = useState(null);
+  const [result, setResult]   = useState(null);
+  const [answers, setAnswers] = useState({});
+  const [note, setNote]       = useState("");
+  const [orders, setOrders]   = useState([]);
+  const [project, setProject] = useState("");
+  const [algNote, setAlgNote] = useState("");
+  const [toast, setToast]     = useState(null);
+  const fileRef   = useRef();
+  const cameraRef = useRef();
+
+  const showToast = msg => { setToast(msg); setTimeout(()=>setToast(null),3500); };
+
+  const b64Ref = useRef(null); // stable ref — always current for analyse()
+
+  const readFile = async f => {
+    if(!f) return;
+    setFile(f); setResult(null); setAnswers({}); setApiErr(null); setQualIss([]); setNote("");
+    b64Ref.current = null;
+
+    try {
+      // Step 1: read raw bytes
+      const raw = await readFileAsDataUrl(f);
+      // Step 2: show preview immediately
+      setPrev(raw);
+      // Step 3: resize/convert (may fall back to raw if canvas blocked)
+      const final = await resizeDataUrl(raw);
+      // Step 4: store b64 in BOTH ref (for immediate use) and state
+      const b64data = final.split(",")[1];
+      b64Ref.current = { b64: b64data, mt: "image/jpeg" };
+      setB64(b64data);
+      setMt("image/jpeg");
+      // Step 5: quality check
+      const iss = await checkQuality(final);
+      setQualIss(iss);
+    } catch(e) {
+      setApiErr("Kon de foto niet laden: " + (e.message||"onbekende fout"));
+    }
+  };
+
+  const handleDrop = useCallback(e=>{e.preventDefault();setDrag(false);const f=e.dataTransfer.files[0];if(f)readFile(f);},[]);
+
+  const analyse = async () => {
+    // Use ref as primary source — guaranteed current even if React state not flushed yet
+    const src = b64Ref.current;
+    const activeB64 = src?.b64 || b64;
+    const activeMt  = src?.mt  || mt || "image/jpeg";
+
+    if (!activeB64) {
+      setApiErr("Geen foto gevonden. Upload opnieuw en probeer dan te analyseren.");
+      return;
+    }
+
+    setLoading(true); setApiErr(null);
+    try {
+      const raw = await callClaude(activeB64, activeMt);
+      setResult(enrichResult(raw)); setStep(1);
+    } catch(e) { setApiErr(e.message||"Onbekende fout"); }
+    finally { setLoading(false); }
+  };
+
+  const setAns = (k,v) => setAnswers(p=>({...p,[k]:v}));
+
+  const confirmed = () => result && (result._confirms||[]).every(c=>{
+    if(c.type==="dikte") return !!answers.dikte;
+    if(c.field) return answers[c.field]!==undefined;
+    return true;
+  });
+
+  const addOrder = () => {
+    setOrders(p=>[...p,{id:Date.now(),r:{...result,ags_cat:answers.dikte||result.ags_cat},ans:{...answers},note}]);
+    setStep(0); setFile(null); setPrev(null); setB64(null); setResult(null);
+    setAnswers({}); setNote(""); setQualIss([]); setApiErr(null);
+    showToast(`✓ Onderdeel ${orders.length+1} toegevoegd`);
+  };
+
+  const removeOrder = id => setOrders(p=>p.filter(o=>o.id!==id));
+
+  const resetAll = () => {
+    setStep(0); setFile(null); setPrev(null); setB64(null); setResult(null);
+    setAnswers({}); setNote(""); setOrders([]); setProject(""); setAlgNote("");
+    setQualIss([]); setApiErr(null); b64Ref.current = null;
+  };
+
+  const STEPS = ["Schets invoer","Validatie","Orderlijst"];
+
+  return (
+    <div>
+      {/* TOP BAR */}
+      <div style={S.topbar}>
+        <span>📞 <a href="tel:0786176833" style={{color:'rgba(255,255,255,0.85)'}}>078-6176833</a></span>
+        <span>Ma–Vr 08:00–17:00</span>
+      </div>
+
+      {/* HEADER */}
+      <div style={S.header}>
+        <div>
+          <div style={S.logoName}>AGS Products B.V.</div>
+          <div style={S.logoSub}>Specialist Lood · Zink · Koper</div>
+        </div>
+        <div style={{display:'flex',alignItems:'center',gap:8}}>
+          {orders.length>0 && (
+            <span style={{background:C.red,color:'#fff',borderRadius:4,padding:'4px 10px',fontSize:12,fontWeight:700,cursor:'pointer'}} onClick={()=>setStep(2)}>
+              🛒 {orders.length}
+            </span>
+          )}
+          <div style={S.badge}>Maatwerk Tool</div>
+        </div>
+      </div>
+
+      {/* STEPPER */}
+      <div style={S.stepper}>
+        {STEPS.map((s,i)=>(
+          <div key={i} style={S.stepTab(step===i,step>i)}>
+            <div style={S.stepNum(step===i,step>i)}>{step>i?"✓":i+1}</div>
+            <span style={S.stepLabel(step===i,step>i)}>{s}</span>
+          </div>
+        ))}
+      </div>
+
+      {/* CONTENT */}
+      <div style={S.page}>
+        <div style={{...S.section, paddingTop:20}}>
+
+          {/* ── STAP 0 ── */}
+          {step===0 && (
+            <div>
+              {/* Project */}
+              <Card title="📁 Project" accent="(optioneel)">
+                <div style={S.formGroup}>
+                  <label style={S.label}>Projectnaam / referentie</label>
+                  <input style={S.input} type="text"
+                    placeholder="bijv. Renovatie Kerk Dordrecht"
+                    value={project} onChange={e=>setProject(e.target.value)}/>
+                </div>
+              </Card>
+
+              {/* Input card */}
+              <div style={S.card}>
+                <div style={{...S.cardBd, paddingBottom:0}}>
+                  {/* Tabs */}
+                  <div style={S.tabs}>
+                    <div style={S.tab(tab==="foto")} onClick={()=>setTab("foto")}>📷 Foto / Scan</div>
+                    <div style={S.tab(tab==="handmatig")} onClick={()=>setTab("handmatig")}>✏️ Handmatig</div>
+                  </div>
+                </div>
+
+                <div style={S.cardBd}>
+                  {tab==="foto" && (
+                    <div>
+                      {!preview ? (
+                        <div>
+                          <div style={S.uploadZone(drag)}
+                            onDragOver={e=>{e.preventDefault();setDrag(true);}}
+                            onDragLeave={()=>setDrag(false)}
+                            onDrop={handleDrop}
+                            onClick={()=>fileRef.current.click()}>
+                            <div style={S.uploadIcon}>📐</div>
+                            <div style={S.uploadTitle}>Schets uploaden</div>
+                            <div style={S.uploadSub}>Sleep hierheen of tik om te kiezen</div>
+                            <div style={{display:'flex',gap:6,marginTop:10,flexWrap:'wrap',justifyContent:'center'}}>
+                              {["JPG","PNG","PDF","HEIC"].map(t=>(
+                                <span key={t} style={{fontSize:11,fontWeight:700,padding:'3px 9px',background:C.blue,color:'#fff',borderRadius:2,fontFamily:"'Oswald',sans-serif"}}>{t}</span>
+                              ))}
+                            </div>
+                          </div>
+                          <input ref={fileRef} type="file" accept="image/*,.pdf" style={{display:'none'}} onChange={e=>readFile(e.target.files[0])}/>
+                          <input ref={cameraRef} type="file" accept="image/*" capture="environment" style={{display:'none'}} onChange={e=>readFile(e.target.files[0])}/>
+                          <div style={{marginTop:12,display:'flex',flexDirection:'column',gap:10}}>
+                            <Btn variant="blue" onClick={()=>cameraRef.current.click()}>📷 Camera openen</Btn>
+                            <Btn variant="ol" onClick={()=>fileRef.current.click()}>🗂 Bestand kiezen</Btn>
+                          </div>
+                        </div>
+                      ) : (
+                        <div>
+                          {/* Quality issues */}
+                          {qualIss.length>0 && (
+                            <div style={S.qualWarn}>
+                              <div style={{fontFamily:"'Oswald',sans-serif",fontSize:13,fontWeight:700,color:C.red,marginBottom:6}}>⚠️ Foto-kwaliteit aandachtspunten</div>
+                              {qualIss.map((q,i)=><div key={i} style={{fontSize:13,color:C.warn,marginBottom:2}}>• {q}</div>)}
+                              <div style={{fontSize:12,color:C.muted,marginTop:4}}>U kunt toch doorgaan, maar de nauwkeurigheid kan lager zijn.</div>
+                            </div>
+                          )}
+                          {qualIss.length===0 && <Alert type="ok">✓ Foto-kwaliteit is goed</Alert>}
+
+                          {/* Preview */}
+                          <div style={{background:'#141828',borderRadius:6,overflow:'hidden',marginBottom:12,display:'flex',alignItems:'center',justifyContent:'center',maxHeight:260}}>
+                            <img src={preview} alt="Schets" style={{maxWidth:'100%',maxHeight:260,objectFit:'contain',display:'block'}}/>
+                          </div>
+                          <div style={{fontSize:13,color:C.muted,marginBottom:12,textAlign:'center'}}>📎 {file?.name} · {(file?.size/1024).toFixed(0)} KB</div>
+
+                          {apiErr && <Alert type="err"><div><strong>⚠️ Analyse mislukt</strong><br/><span style={{fontSize:12}}>{apiErr}</span></div></Alert>}
+
+                          <div style={{display:'flex',flexDirection:'column',gap:10}}>
+                            <Btn variant="red" onClick={analyse} disabled={loading}>
+                              {loading ? <span>⏳ Analyseren…</span> : "🔍 Analyseer met AGS AI"}
+                            </Btn>
+                            <Btn variant="ol" sm onClick={()=>{setFile(null);setPrev(null);setB64(null);setQualIss([]);}}>✕ Andere foto kiezen</Btn>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {tab==="handmatig" && <ManualForm onSubmit={r=>{setResult(r);setStep(1);}}/>}
+                </div>
+              </div>
+
+              {/* Orderlijst preview */}
+              {orders.length>0 && (
+                <Card title="🛒 Orderlijst" accent={`— ${orders.length} onderdeel${orders.length!==1?"en":""}`}
+                  action={<Btn variant="red" sm onClick={()=>setStep(2)}>Naar export →</Btn>}>
+                  {orders.map((o,i)=>(
+                    <div key={o.id} style={{...S.orderItem, marginBottom: i<orders.length-1?10:0}}>
+                      <div style={{display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+                        <div>
+                          <span style={S.orderNum}>{i+1}</span>
+                          <span style={S.orderType}>{o.r.producttype||"Maatwerk"}</span>
+                        </div>
+                        <button style={{background:'none',border:`1px solid ${C.border}`,borderRadius:4,padding:'4px 10px',color:C.red,cursor:'pointer',fontSize:13,fontWeight:700}} onClick={()=>removeOrder(o.id)}>✕</button>
+                      </div>
+                      <div style={S.orderMat}>{o.ans?.dikte||o.r.ags_cat}</div>
+                      <div style={S.orderMeta}>
+                        {o.r.lengte_mm&&<span style={S.orderMetaItem}>L: {o.r.lengte_mm}mm</span>}
+                        {o.r.breedte_mm&&<span style={S.orderMetaItem}>B: {o.r.breedte_mm}mm</span>}
+                        <span style={{...S.orderMetaItem,color:C.red,fontWeight:700}}>Aantal: {o.r.aantal}</span>
+                      </div>
+                    </div>
+                  ))}
+                </Card>
+              )}
+            </div>
+          )}
+
+          {/* ── STAP 1: VALIDATIE ── */}
+          {step===1 && result && (
+            <div>
+              {/* Terug knop */}
+              <div style={{marginBottom:14}}>
+                <Btn variant="ol" sm style={{width:'auto'}} onClick={()=>setStep(0)}>← Terug</Btn>
+              </div>
+
+              {/* Chips */}
+              <div style={S.chipsGrid}>
+                {[[result.aantal??"—","Stuks"],[result.lengte_mm??"—","Lengte mm"],[result.breedte_mm??"—","Breedte mm"],[(result.bewerkingen||[]).length,"Bewerkingen"]].map(([v,l])=>(
+                  <div key={l} style={S.chip}>
+                    <span style={S.chipVal}>{v}</span>
+                    <span style={S.chipLbl}>{l}</span>
+                  </div>
+                ))}
+              </div>
+
+              {/* Resultaat */}
+              <Card title="📊 Analyse Resultaat" accent="— AGS Gekwalificeerd">
+                <ResultCard result={result}/>
+              </Card>
+
+              {/* Bevestigingen */}
+              {result._confirms?.length>0 && (
+                <div>
+                  <div style={{fontFamily:"'Oswald',sans-serif",fontSize:16,fontWeight:700,color:C.red,borderLeft:`4px solid ${C.red}`,paddingLeft:10,marginBottom:12}}>
+                    ❓ Bevestiging vereist ({result._confirms.length})
+                  </div>
+                  <ConfirmSection confirms={result._confirms} answers={answers} onAnswer={setAns}/>
+                </div>
+              )}
+
+              {confirmed() && <Alert type="ok">✓ <strong>Alle bevestigingen compleet.</strong></Alert>}
+
+              {/* Opmerking */}
+              <Card title="💬 Opmerking" accent="(optioneel)">
+                <textarea style={S.textarea} rows={3}
+                  placeholder="Speciale afwerking, leveringsinstructie, kleurcodering..."
+                  value={note} onChange={e=>setNote(e.target.value)}/>
+              </Card>
+
+              {/* Actie knoppen */}
+              <div style={{display:'flex',flexDirection:'column',gap:10}}>
+                <Btn variant="green" disabled={!confirmed()} onClick={addOrder}>
+                  + Toevoegen aan orderlijst {orders.length>0?`(nu ${orders.length+1})` :""}
+                </Btn>
+                {orders.length>0 && (
+                  <Btn variant="blue" onClick={()=>setStep(2)}>📋 Naar orderlijst & export →</Btn>
+                )}
+              </div>
+              {!confirmed() && <div style={{fontSize:13,color:C.muted,textAlign:'center',marginTop:8}}>Beantwoord eerst alle bevestigingsvragen hierboven.</div>}
+            </div>
+          )}
+
+          {/* ── STAP 2: ORDERLIJST & EXPORT ── */}
+          {step===2 && (
+            <div>
+              <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:14,gap:12}}>
+                <div>
+                  <div style={{fontFamily:"'Oswald',sans-serif",fontSize:20,fontWeight:700,color:C.blue}}>Orderlijst & Export</div>
+                  <div style={{fontSize:13,color:C.muted}}>Klaar voor offerte</div>
+                </div>
+                <Btn variant="ol" sm style={{width:'auto'}} onClick={()=>setStep(0)}>+ Toevoegen</Btn>
+              </div>
+
+              {project && <Alert type="info">📁 <strong>Project:</strong> {project}</Alert>}
+
+              {orders.length===0 ? (
+                <Alert type="warn">⚠️ Orderlijst is leeg. Voeg eerst een onderdeel toe.</Alert>
+              ) : (
+                <div>
+                  {/* Order items */}
+                  {orders.map((o,i)=>(
+                    <div key={o.id} style={{...S.orderItem,marginBottom:12}}>
+                      <div style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',marginBottom:8}}>
+                        <div>
+                          <span style={S.orderNum}>{i+1}</span>
+                          <span style={S.orderType}>{o.r.producttype||"Maatwerk"}</span>
+                        </div>
+                        <button style={{background:'none',border:`1px solid ${C.border}`,borderRadius:4,padding:'4px 10px',color:C.red,cursor:'pointer',fontSize:13,fontWeight:700}} onClick={()=>removeOrder(o.id)}>✕</button>
+                      </div>
+                      <div style={{...S.orderMat,marginBottom:6}}>{o.ans?.dikte||o.r.ags_cat}</div>
+                      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:4}}>
+                        {[["Lengte",o.r.lengte_mm,o.r.lengte_mm?o.r.lengte_mm+"mm":null],["Breedte",o.r.breedte_mm,o.r.breedte_mm?o.r.breedte_mm+"mm":null],["Diepte",o.r.diepte_mm,o.r.diepte_mm?o.r.diepte_mm+"mm":null],["Aantal",o.r.aantal,o.r.aantal+" stuks"]].filter(([,val])=>val!=null).map(([l,,display])=>(
+                          <div key={l} style={{fontSize:13}}>
+                            <span style={{color:C.muted}}>{l}: </span>
+                            <span style={{fontWeight:700,color:C.body}}>{display}</span>
+                          </div>
+                        ))}
+                      </div>
+                      {o.r.bewerkingen?.length>0 && <div style={{fontSize:12,color:C.muted,marginTop:6}}>{o.r.bewerkingen.join(", ")}</div>}
+                      {o.note && <div style={{fontSize:13,fontStyle:'italic',color:C.muted,marginTop:4,borderTop:`1px solid ${C.border2}`,paddingTop:6}}>💬 {o.note}</div>}
+                    </div>
+                  ))}
+
+                  {/* Algemene opmerking */}
+                  <Card title="💬 Algemene opmerking" accent="(optioneel)">
+                    <textarea style={S.textarea} rows={3}
+                      placeholder="Gewenste leverdatum, algemene instructies..."
+                      value={algNote} onChange={e=>setAlgNote(e.target.value)}/>
+                  </Card>
+
+                  {/* Export knoppen */}
+                  <div style={{display:'flex',flexDirection:'column',gap:10,marginBottom:16}}>
+                    <Btn variant="red" onClick={()=>{exportPDF(orders,project,algNote);showToast("📄 PDF geopend in nieuw venster");}}>📄 PDF Offerte downloaden</Btn>
+                    <Btn variant="blue" onClick={()=>{exportCSV(orders,project);showToast("📊 CSV geëxporteerd voor ERP");}}>📊 CSV voor ERP exporteren</Btn>
+                    <Btn variant="ol" onClick={resetAll}>🔄 Nieuwe order starten</Btn>
+                  </div>
+
+                  {/* Contact */}
+                  <Card title="📞 Vragen over uw offerte?">
+                    <div style={{display:'flex',flexDirection:'column',gap:14}}>
+                      {[["📞","Telefoon","078-6176833","Ma–Vr 08:00–17:00"],["✉️","E-mail","info@ags.nl","Reactie binnen 1 werkdag"],["📍","Adres","Daltonstraat 54, Dordrecht","Overdekte laadkade"]].map(([ico,l,v,s])=>(
+                        <div key={l} style={{display:'flex',gap:14,alignItems:'flex-start'}}>
+                          <span style={{fontSize:24,width:32,textAlign:'center'}}>{ico}</span>
+                          <div>
+                            <div style={{fontSize:11,textTransform:'uppercase',color:C.muted,fontWeight:700,letterSpacing:'0.5px'}}>{l}</div>
+                            <div style={{fontWeight:700,color:C.blue,fontSize:15}}>{v}</div>
+                            <div style={{fontSize:13,color:C.muted}}>{s}</div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </Card>
+                </div>
+              )}
+            </div>
+          )}
+
+        </div>{/* /section */}
+      </div>{/* /page */}
+
+      {/* CTA BANNER */}
+      <div style={{background:C.blue,padding:'24px 16px',textAlign:'center'}}>
+        <div style={{maxWidth:480,margin:'0 auto'}}>
+          <div style={{fontFamily:"'Oswald',sans-serif",fontSize:11,fontWeight:700,letterSpacing:'2px',textTransform:'uppercase',color:'rgba(255,255,255,0.6)',marginBottom:6}}>
+            AGS Products B.V.
+          </div>
+          <div style={{fontFamily:"'Oswald',sans-serif",fontSize:22,fontWeight:700,color:'#fff',lineHeight:1.25,marginBottom:6}}>
+            Het complete assortiment<br/>voor uw dakproject
+          </div>
+          <div style={{fontSize:13,color:'rgba(255,255,255,0.7)',marginBottom:18,lineHeight:1.5}}>
+            Van loden afvoeren tot zinken vergaarbakken — ontdek alles wat AGS te bieden heeft.
+          </div>
+          <a href="https://www.ags.nl" target="_blank" rel="noopener noreferrer"
+            style={{display:'inline-flex',alignItems:'center',justifyContent:'center',gap:8,
+              background:C.red,color:'#fff',borderRadius:6,padding:'14px 28px',
+              fontFamily:"'Open Sans',sans-serif",fontSize:15,fontWeight:700,
+              textDecoration:'none',textTransform:'uppercase',letterSpacing:'0.3px',
+              boxShadow:'0 4px 16px rgba(204,16,32,0.4)',width:'100%',maxWidth:340,
+              transition:'all 0.18s'}}>
+            Bekijk het volledige assortiment →
+          </a>
+          <div style={{fontSize:12,color:'rgba(255,255,255,0.45)',marginTop:10}}>www.ags.nl</div>
+        </div>
+      </div>
+
+      {/* FOOTER */}
+      <div style={S.redBar}/>
+      <div style={S.footer}>
+        <div style={{marginBottom:4,fontWeight:700,color:'rgba(255,255,255,0.95)'}}>AGS Products B.V.</div>
+        <div>Daltonstraat 54, 3316GD Dordrecht</div>
+        <div style={{marginTop:8,display:'flex',justifyContent:'space-between',flexWrap:'wrap',gap:4}}>
+          <span>© {new Date().getFullYear()} AGS Products B.V.</span>
+          <span>www.ags.nl</span>
+        </div>
+      </div>
+
+      {/* TOAST */}
+      {toast && <div style={S.toast}>🔔 {toast}</div>}
+    </div>
+  );
+}
+
+const root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(<AGSTool />);
+</script>
+</body>
+</html>
